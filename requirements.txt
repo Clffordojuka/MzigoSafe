@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+requests
+africastalking
+psycopg2-binary
+sqlalchemy
+python-dotenv
+pydantic
