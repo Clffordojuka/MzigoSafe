@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, Depends
 from sqlalchemy.orm import Session
 from database import get_db
 import models
-from routers.sms import dispatch_escrow_success_alerts, generate_otp
+#from routers.sms import dispatch_escrow_success_alerts, generate_otp
 
 router = APIRouter()
 

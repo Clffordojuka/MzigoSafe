@@ -1,8 +1,12 @@
 from fastapi import APIRouter, Form, Response, Depends
 from sqlalchemy.orm import Session
 from database import get_db
+from routers.sms import dispatch_logistics_alerts
 import models
-from routers.sms import dispatch_escrow_success_alerts, generate_otp
+import random
+
+def generate_otp():
+    return str(random.randint(1000, 9999))
 
 router = APIRouter()
 
@@ -19,14 +23,110 @@ async def ussd_callback(
     
     user = db.query(models.User).filter(models.User.phone_number == user_phone).first()
     if not user:
-        # Organic creation: If we don't know them, they default to a seller/buyer hybrid
         user = models.User(phone_number=user_phone, role=models.UserRole.seller)
         db.add(user)
         db.commit()
         db.refresh(user)
 
     # =========================================================================
-    # DYNAMIC BUYER FLOW (The Virtual Escrow Trap)
+    # 1. DYNAMIC RIDER FLOW (Isolated Rider App)
+    # =========================================================================
+    if user.role == models.UserRole.rider:
+        active_delivery = db.query(models.Delivery).filter(
+            models.Delivery.rider_id == user.user_id,
+            models.Delivery.status.in_([models.DeliveryStatus.rider_assigned, models.DeliveryStatus.in_transit])
+        ).first()
+
+        if active_delivery:
+            # STATE A: Waiting for Pickup
+            if active_delivery.status == models.DeliveryStatus.rider_assigned:
+                if len(inputs) == 0:
+                    seller = db.query(models.User).filter(models.User.user_id == active_delivery.seller_id).first()
+                    response = (
+                        f"CON Pickup Job Active!\n"
+                        f"Seller: {seller.phone_number}\n"
+                        f"Enter 4-digit Pickup OTP:"
+                    )
+                    return Response(content=response, media_type="text/plain")
+                elif len(inputs) == 1:
+                    if inputs[0] == active_delivery.pickup_otp:
+                        active_delivery.status = models.DeliveryStatus.in_transit
+                        db.commit()
+                        response = "END OTP Verified! Package IN TRANSIT. Dial back when you reach the buyer."
+                    else:
+                        response = "END Invalid Pickup OTP. Try again."
+                    return Response(content=response, media_type="text/plain")
+            
+            # STATE B: Waiting for Dropoff
+            elif active_delivery.status == models.DeliveryStatus.in_transit:
+                if len(inputs) == 0:
+                    buyer = db.query(models.User).filter(models.User.user_id == active_delivery.buyer_id).first()
+                    response = (
+                        f"CON Dropoff Job Active!\n"
+                        f"Buyer: {buyer.phone_number}\n"
+                        f"Enter 4-digit Delivery OTP:"
+                    )
+                    return Response(content=response, media_type="text/plain")
+                elif len(inputs) == 1:
+                    if inputs[0] == active_delivery.dropoff_otp:
+                        active_delivery.status = models.DeliveryStatus.delivered
+                        
+                        seller = db.query(models.User).filter(models.User.user_id == active_delivery.seller_id).first()
+                        rider = user 
+                        
+                        seller.wallet_balance += active_delivery.item_price
+                        rider.wallet_balance += active_delivery.delivery_fee
+                        
+                        db.commit()
+                        response = f"END Delivery Complete! KES {active_delivery.delivery_fee} added to your wallet."
+                    else:
+                        response = "END Invalid Delivery OTP. Try again."
+                    return Response(content=response, media_type="text/plain")
+        
+        # STATE C: Idle Rider - Looking for work
+        else:
+            if len(inputs) == 0:
+                response = "CON MzigoSafe Rider App\n1. Find Available Jobs\n2. Wallet Balance"
+                return Response(content=response, media_type="text/plain")
+            
+            elif inputs[0] == "1":
+                available_job = db.query(models.Delivery).filter(
+                    models.Delivery.status == models.DeliveryStatus.funds_secured,
+                    models.Delivery.rider_id == None
+                ).order_by(models.Delivery.created_at.desc()).first()
+                
+                if not available_job:
+                    response = "END No pending deliveries available right now."
+                    return Response(content=response, media_type="text/plain")
+                
+                if len(inputs) == 1:
+                    seller = db.query(models.User).filter(models.User.user_id == available_job.seller_id).first()
+                    response = (
+                        f"CON New Job Available!\n"
+                        f"Pickup: {seller.phone_number}\n"
+                        f"Fee: Ksh {available_job.delivery_fee}\n"
+                        f"1. Accept Job\n2. Ignore"
+                    )
+                    return Response(content=response, media_type="text/plain")
+                elif len(inputs) == 2:
+                    if inputs[1] == "1":
+                        available_job.rider_id = user.user_id
+                        available_job.status = models.DeliveryStatus.rider_assigned
+                        db.commit()
+                        response = "END Job Accepted! Dial back to enter the Pickup OTP when you arrive."
+                    else:
+                        response = "END Job ignored."
+                    return Response(content=response, media_type="text/plain")
+            
+            elif inputs[0] == "2":
+                response = f"END Your virtual wallet balance is: KES {user.wallet_balance}"
+                return Response(content=response, media_type="text/plain")
+            else:
+                response = "END Invalid choice."
+                return Response(content=response, media_type="text/plain")
+
+    # =========================================================================
+    # 2. DYNAMIC BUYER FLOW (The Virtual Escrow Trap)
     # =========================================================================
     pending_delivery = db.query(models.Delivery).filter(
         models.Delivery.buyer_id == user.user_id,
@@ -49,11 +149,9 @@ async def ussd_callback(
         elif len(inputs) == 1:
             if inputs[0] == "1":
                 if user.wallet_balance >= total:
-                    # 1. Deduct funds (Virtual Escrow)
                     user.wallet_balance -= total
                     pending_delivery.status = models.DeliveryStatus.funds_secured
                     
-                    # 2. Generate Dual OTPs
                     pickup_otp = generate_otp()
                     dropoff_otp = generate_otp()
                     pending_delivery.pickup_otp = pickup_otp
@@ -61,13 +159,19 @@ async def ussd_callback(
                     
                     db.commit()
                     
-                    # 3. Alert everyone via SMS
-                    # (We will implement the detailed SMS logic next)
-                    # dispatch_escrow_success_alerts(...)
+                    # 2. TRIGGER THE SMS ALERTS HERE!
+                    seller = db.query(models.User).filter(models.User.user_id == pending_delivery.seller_id).first()
+                    dispatch_logistics_alerts(
+                        seller_phone=seller.phone_number,
+                        buyer_phone=user.phone_number,
+                        delivery_fee=float(pending_delivery.delivery_fee),
+                        pickup_otp=pickup_otp,
+                        dropoff_otp=dropoff_otp
+                    )
                     
                     response = "END Payment successful! Funds escrowed. Rider has been dispatched."
                 else:
-                    response = "END Insufficient wallet balance. Please top up and try again."
+                    response = "END Insufficient wallet balance."
                 return Response(content=response, media_type="text/plain")
                 
             elif inputs[0] == "2":
@@ -77,11 +181,11 @@ async def ussd_callback(
                 return Response(content=response, media_type="text/plain")
                 
             else:
-                response = "END Invalid choice. Please dial again."
+                response = "END Invalid choice."
                 return Response(content=response, media_type="text/plain")
 
     # =========================================================================
-    # STANDARD SELLER FLOW
+    # 3. STANDARD SELLER FLOW (Default)
     # =========================================================================
     if len(inputs) == 0:
         response = "CON Welcome to MzigoSafe\n1. Send Package\n2. Track Delivery\n3. Wallet Balance"
@@ -89,20 +193,16 @@ async def ussd_callback(
     elif inputs[0] == "1":
         if len(inputs) == 1:
             response = "CON Enter Buyer Phone Number (e.g., +2547XXXXXXXX):"
-            
         elif len(inputs) == 2:
             response = "CON Enter the Price of the Item (Ksh):"
-            
         elif len(inputs) == 3:
             response = "CON Enter the Delivery Fee (Ksh):"
-            
         elif len(inputs) == 4:
             buyer_phone = inputs[1]
             try:
                 item_price = int(inputs[2])
                 delivery_fee = int(inputs[3])
                 total = item_price + delivery_fee
-                
                 response = (
                     f"CON Send package to {buyer_phone}?\n"
                     f"Item: Ksh {item_price}\n"
@@ -127,7 +227,6 @@ async def ussd_callback(
                 
                 buyer_user = db.query(models.User).filter(models.User.phone_number == raw_buyer_phone).first()
                 if not buyer_user:
-                    # Organic creation of the buyer
                     buyer_user = models.User(phone_number=raw_buyer_phone, role=models.UserRole.buyer)
                     db.add(buyer_user)
                     db.commit()
@@ -142,7 +241,6 @@ async def ussd_callback(
                 )
                 db.add(new_delivery)
                 db.commit()
-                
                 response = f"END Request sent! Order #{new_delivery.delivery_id} pending buyer verification."
             else:
                 response = "END Delivery request cancelled."
