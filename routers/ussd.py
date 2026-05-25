@@ -2,7 +2,7 @@ from fastapi import APIRouter, Form, Response, Depends
 from sqlalchemy.orm import Session
 from database import get_db
 import models
-from routers.payments import initiate_mpesa_escrow_push
+from routers.sms import dispatch_escrow_success_alerts, generate_otp
 
 router = APIRouter()
 
@@ -14,57 +14,71 @@ async def ussd_callback(
     text: str = Form(""),
     db: Session = Depends(get_db)
 ):
-    # Standardize incoming phone number format
     user_phone = phoneNumber if phoneNumber.startswith("+") else f"+{phoneNumber.strip()}"
     inputs = text.split("*") if text else []
     
-    # 1. Identify or auto-register the calling user in our DB
     user = db.query(models.User).filter(models.User.phone_number == user_phone).first()
     if not user:
-        # Default auto-registration for demo fallback
-        user = models.User(phone_number=user_phone, role=models.UserRole.buyer)
+        # Organic creation: If we don't know them, they default to a seller/buyer hybrid
+        user = models.User(phone_number=user_phone, role=models.UserRole.seller)
         db.add(user)
         db.commit()
         db.refresh(user)
 
-    response = ""
-
     # =========================================================================
-    # DYNAMIC BUYER FLOW (Intercept menu if an active escrow request exists)
+    # DYNAMIC BUYER FLOW (The Virtual Escrow Trap)
     # =========================================================================
     pending_delivery = db.query(models.Delivery).filter(
         models.Delivery.buyer_id == user.user_id,
         models.Delivery.status == models.DeliveryStatus.pending_buyer_payment
     ).order_by(models.Delivery.created_at.desc()).first()
 
-    # If the buyer dials in and hasn't started navigating the seller menu explicitly
-    if pending_delivery and (len(inputs) == 0 or inputs[0] not in ["1", "2", "3"]):
+    if pending_delivery:
+        total = pending_delivery.item_price + pending_delivery.delivery_fee
+        
         if len(inputs) == 0:
-            total = pending_delivery.item_price + pending_delivery.delivery_fee
             response = (
                 f"CON MzigoSafe Escrow Request!\n"
                 f"Total Due: Ksh {total}\n"
-                f"1. Approve & Pay Now\n"
+                f"Your Wallet: Ksh {user.wallet_balance}\n"
+                f"1. Pay from Wallet\n"
                 f"2. Decline Order"
             )
-        elif inputs[0] == "1":
-            total = pending_delivery.item_price + pending_delivery.delivery_fee
-            # Trigger our direct REST API wrapper for M-Pesa push
-            push_triggered = initiate_mpesa_escrow_push(
-                buyer_phone=user_phone,
-                total_amount=float(total),
-                delivery_id=pending_delivery.delivery_id
-            )
-            if push_triggered:
-                response = "END STK PIN Prompt sent to your phone. Complete payment to secure escrow."
+            return Response(content=response, media_type="text/plain")
+            
+        elif len(inputs) == 1:
+            if inputs[0] == "1":
+                if user.wallet_balance >= total:
+                    # 1. Deduct funds (Virtual Escrow)
+                    user.wallet_balance -= total
+                    pending_delivery.status = models.DeliveryStatus.funds_secured
+                    
+                    # 2. Generate Dual OTPs
+                    pickup_otp = generate_otp()
+                    dropoff_otp = generate_otp()
+                    pending_delivery.pickup_otp = pickup_otp
+                    pending_delivery.dropoff_otp = dropoff_otp
+                    
+                    db.commit()
+                    
+                    # 3. Alert everyone via SMS
+                    # (We will implement the detailed SMS logic next)
+                    # dispatch_escrow_success_alerts(...)
+                    
+                    response = "END Payment successful! Funds escrowed. Rider has been dispatched."
+                else:
+                    response = "END Insufficient wallet balance. Please top up and try again."
+                return Response(content=response, media_type="text/plain")
+                
+            elif inputs[0] == "2":
+                pending_delivery.status = models.DeliveryStatus.cancelled
+                db.commit()
+                response = "END Delivery request declined successfully."
+                return Response(content=response, media_type="text/plain")
+                
             else:
-                response = "END Failed to trigger payment. Please try again later."
-        elif inputs[0] == "2":
-            pending_delivery.status = models.DeliveryStatus.cancelled
-            db.commit()
-            response = "END Delivery request declined successfully."
-        
-        return Response(content=response, media_type="text/plain")
+                response = "END Invalid choice. Please dial again."
+                return Response(content=response, media_type="text/plain")
 
     # =========================================================================
     # STANDARD SELLER FLOW
@@ -97,13 +111,11 @@ async def ussd_callback(
                     f"1. Confirm\n2. Cancel"
                 )
             except ValueError:
-                response = "END Invalid inputs. Please use integers for currency values."
+                response = "END Invalid inputs. Please use integers."
             
         elif len(inputs) == 5:
             if inputs[4] == "1":
                 raw_buyer_phone = inputs[1]
-                
-                # Format local phone syntax to standard E.164 (+254...)
                 if not raw_buyer_phone.startswith("+"):
                     if raw_buyer_phone.startswith("0"):
                         raw_buyer_phone = "+254" + raw_buyer_phone[1:]
@@ -113,15 +125,14 @@ async def ussd_callback(
                 item_price = int(inputs[2])
                 delivery_fee = int(inputs[3])
                 
-                # Fetch or create the buyer profile record
                 buyer_user = db.query(models.User).filter(models.User.phone_number == raw_buyer_phone).first()
                 if not buyer_user:
+                    # Organic creation of the buyer
                     buyer_user = models.User(phone_number=raw_buyer_phone, role=models.UserRole.buyer)
                     db.add(buyer_user)
                     db.commit()
                     db.refresh(buyer_user)
 
-                # Persist the active delivery to PostgreSQL
                 new_delivery = models.Delivery(
                     seller_id=user.user_id,
                     buyer_id=buyer_user.user_id,
@@ -137,10 +148,10 @@ async def ussd_callback(
                 response = "END Delivery request cancelled."
 
     elif inputs[0] == "2":
-        response = "END Active shipment pipeline interfaces coming soon."
+        response = "END Tracking module coming soon."
     elif inputs[0] == "3":
-        response = "END Current verified wallet balance: KES 0.00."
+        response = f"END Your virtual wallet balance is: KES {user.wallet_balance}"
     else:
-        response = "END Invalid choice or feature coming soon."
+        response = "END Invalid choice."
 
     return Response(content=response, media_type="text/plain")

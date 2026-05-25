@@ -42,16 +42,32 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     if status == "Success":
         print(f"Escrow Secured for Delivery ID {delivery_id}")
         
-        # In a real build, we'd update the DB status here.
-        # Generate OTP and alert everyone
-        otp = generate_otp()
-        dispatch_escrow_success_alerts(
-            buyer_phone="+254700000000", # Fetch from DB in production
-            delivery_id=delivery_id,
-            delivery_fee=200,            # Fetch from DB in production
-            otp=otp
-        )
+        # 1. Fetch the delivery from the database
+        delivery = db.query(models.Delivery).filter(models.Delivery.delivery_id == int(delivery_id)).first()
+        
+        if delivery:
+            # 2. Update status and save OTP
+            delivery.status = models.DeliveryStatus.funds_secured
+            otp = generate_otp()
+            delivery.otp_code = otp
+            db.commit()
+            
+            # 3. Fetch buyer to get their actual phone number
+            buyer = db.query(models.User).filter(models.User.user_id == delivery.buyer_id).first()
+            
+            # 4. Dispatch the SMS alerts
+            dispatch_escrow_success_alerts(
+                buyer_phone=buyer.phone_number,
+                delivery_id=delivery.delivery_id,
+                delivery_fee=float(delivery.delivery_fee),
+                otp=otp
+            )
     else:
         print(f"Escrow Failed for Delivery ID {delivery_id}. Reason: {data.get('description')}")
+        # Mark as cancelled if payment fails
+        delivery = db.query(models.Delivery).filter(models.Delivery.delivery_id == int(delivery_id)).first()
+        if delivery:
+            delivery.status = models.DeliveryStatus.cancelled
+            db.commit()
         
     return {"status": "received"}
