@@ -27,7 +27,6 @@ def send_sms(phone_number: str, message: str) -> bool:
     }
     
     try:
-        # verify=False is the magic key that bypasses the local SSL mismatch
         response = requests.post(url, data=payload, headers=headers, verify=False)
         response.raise_for_status()
         return True

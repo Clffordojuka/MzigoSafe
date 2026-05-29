@@ -23,7 +23,12 @@ async def ussd_callback(
     
     user = db.query(models.User).filter(models.User.phone_number == user_phone).first()
     if not user:
-        user = models.User(phone_number=user_phone, role=models.UserRole.seller)
+        # Auto-detect the test rider based on their number!
+        if "733333333" in user_phone:
+            user = models.User(phone_number=user_phone, role=models.UserRole.rider)
+        else:
+            user = models.User(phone_number=user_phone, role=models.UserRole.seller)
+            
         db.add(user)
         db.commit()
         db.refresh(user)
