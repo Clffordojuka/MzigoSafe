@@ -4,7 +4,7 @@
 
 ---
 
-## 🚀 The Problem
+## The Problem
 
 The informal logistics market is crippled by a lack of trust:
 
@@ -13,7 +13,7 @@ The informal logistics market is crippled by a lack of trust:
 * **Both parties** fear the delivery rider might disappear with the package or the cash.
 Current logistics applications require smartphones, active internet connections, and complex onboarding, alienating a massive portion of the market that relies on feature phones.
 
-## 💡 The Solution
+## The Solution
 
 MzigoSafe operates entirely over USSD and SMS, making it accessible to 100% of mobile users.
 
@@ -22,7 +22,7 @@ MzigoSafe operates entirely over USSD and SMS, making it accessible to 100% of m
 
 ---
 
-## 🛠️ Technical Architecture
+## Technical Architecture
 
 ### Tech Stack
 
@@ -58,8 +58,6 @@ cd mzigosafe
 
 ```
 
-
-
 ```
 
 2. **Create a virtual environment and install dependencies:**
@@ -79,8 +77,6 @@ AT_API_KEY=your_sandbox_api_key
 
 ```
 
-
-
 ```
 
 4. **Initialize the Database:**
@@ -99,13 +95,11 @@ ngrok http 8000
 
 ```
 
-
-
 ```
 
 ---
 
-## 🔮 Future Roadmap
+## Future Roadmap
 *   **Live API Integration:** Transition the virtual ledger to live M-Pesa STK Pushes via the Safaricom Daraja API.
 *   **Predictive Analytics & ML:** Utilize the timestamp data from the Dual-OTP system to train machine learning models that predict accurate delivery ETAs and optimize rider-to-job matching based on historical route completion times.
 *   **E-commerce API:** Provide an open API allowing platforms like Instagram or WhatsApp bots to generate MzigoSafe escrow links automatically upon order confirmation.
