@@ -32,15 +32,27 @@ def read_dashboard(request: Request, db: Session = Depends(get_db)):
         models.Delivery.status, func.count(models.Delivery.delivery_id)
     ).group_by(models.Delivery.status).all()
     
-    status_dict = {status.name: count for status, count in status_counts}
+    # Safely unpack the tuple ensuring we access the Enum name properly
+    status_dict = {}
+    for status_obj, count in status_counts:
+        if status_obj:
+            status_dict[status_obj.name] = count
 
     # 4. Fetch the 10 most recent deliveries for the table
     recent_deliveries = db.query(models.Delivery).order_by(models.Delivery.created_at.desc()).limit(10).all()
 
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
-        "total_deliveries": total_deliveries,
-        "escrow_volume": escrow_volume,
-        "status_dict": status_dict,
-        "recent_deliveries": recent_deliveries
-    })
+    # Convert escrow volume safely to float for rendering
+    safe_escrow_volume = float(escrow_volume)
+
+    # Clean and modern FastAPI context delivery
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context={
+            "request": request,
+            "total_deliveries": total_deliveries,
+            "escrow_volume": safe_escrow_volume,
+            "status_dict": status_dict,
+            "recent_deliveries": recent_deliveries
+        }
+    )

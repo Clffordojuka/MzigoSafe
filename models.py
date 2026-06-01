@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, Enum, DateTime
+from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, Enum, DateTime, JSON
 from sqlalchemy.sql import func
 import enum
 from database import Base
@@ -53,3 +53,15 @@ class EscrowLedger(Base):
     amount_held = Column(Numeric(10, 2), nullable=False)
     status = Column(Enum(PaymentStatus), default=PaymentStatus.initiated)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+# ==========================================
+# NEW: The missing USSD Session Table!
+# ==========================================
+class UssdSession(Base):
+    __tablename__ = "ussd_sessions"
+    session_id = Column(String(100), primary_key=True, index=True)
+    phone_number = Column(String(15), index=True)
+    current_screen = Column(String(50), default="MAIN_MENU")
+    meta_data = Column(JSON, default={})
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
