@@ -2,6 +2,7 @@ from fastapi import APIRouter, Form, Response, Depends
 from sqlalchemy.orm import Session
 from database import get_db
 from routers.sms import dispatch_logistics_alerts
+from utils.mpesa import initiate_stk_push
 import models
 import random
 
@@ -182,7 +183,7 @@ async def ussd_callback(
             return Response("END Invalid choice.", media_type="text/plain")
 
     # =========================================================================
-    # 4. DYNAMIC BUYER FLOW (The Virtual Escrow Trap)
+    # 4. DYNAMIC BUYER FLOW (The M-Pesa STK Push Trigger)
     # =========================================================================
     pending_delivery = db.query(models.Delivery).filter(
         models.Delivery.buyer_id == user.user_id,
@@ -193,30 +194,38 @@ async def ussd_callback(
         total = pending_delivery.item_price + pending_delivery.delivery_fee
         
         if text == "":
-            return Response(f"CON MzigoSafe Escrow Request!\nTotal Due: Ksh {total}\nYour Wallet: Ksh {user.wallet_balance}\n1. Pay from Wallet\n2. Decline Order", media_type="text/plain")
+            return Response(f"CON MzigoSafe Escrow Request!\nTotal Due: Ksh {total}\n1. Pay via M-Pesa\n2. Decline Order", media_type="text/plain")
             
         elif latest_input == "1":
-            if user.wallet_balance >= total:
-                user.wallet_balance -= total
-                pending_delivery.status = models.DeliveryStatus.funds_secured
-                
-                pickup_otp = generate_otp()
-                dropoff_otp = generate_otp()
-                pending_delivery.pickup_otp = pickup_otp
-                pending_delivery.dropoff_otp = dropoff_otp
-                
+            # 1. Create a tracking record in the Escrow Ledger (Status: Initiated)
+            ledger_entry = models.EscrowLedger(
+                delivery_id=pending_delivery.delivery_id,
+                amount_held=total,
+                status=models.PaymentStatus.initiated,
+                mpesa_checkout_id=f"TEMP_{pending_delivery.delivery_id}_{random.randint(1000,9999)}"
+            )
+            db.add(ledger_entry)
+            db.commit()
+            
+            # 2. Trigger the STK Push to the Buyer's phone
+            reference = f"MzigoSafe-{pending_delivery.delivery_id}"
+            description = "Escrow Payment"
+            
+            mpesa_response = initiate_stk_push(
+                phone_number=user.phone_number,
+                amount=total,
+                reference=reference,
+                description=description
+            )
+            
+            # 3. Save the Daraja CheckoutRequestID so our Webhook can find this transaction later
+            if mpesa_response and "CheckoutRequestID" in mpesa_response:
+                ledger_entry.mpesa_checkout_id = mpesa_response["CheckoutRequestID"]
                 db.commit()
-                
-                seller = db.query(models.User).filter(models.User.user_id == pending_delivery.seller_id).first()
-                dispatch_logistics_alerts(
-                    seller_phone=seller.phone_number,
-                    buyer_phone=user.phone_number,
-                    delivery_fee=float(pending_delivery.delivery_fee),
-                    pickup_otp=pickup_otp,
-                    dropoff_otp=dropoff_otp
-                )
-                return Response("END Payment successful! Funds escrowed. Rider has been dispatched.", media_type="text/plain")
-            return Response("END Insufficient wallet balance.", media_type="text/plain")
+                return Response("END Please check your phone for the M-Pesa PIN prompt to secure the funds.", media_type="text/plain")
+            else:
+                # Fallback if Daraja Sandbox is down
+                return Response("END M-Pesa network error. Please try again later.", media_type="text/plain")
             
         elif latest_input == "2":
             pending_delivery.status = models.DeliveryStatus.cancelled
