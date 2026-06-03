@@ -4,7 +4,7 @@
 
 ---
 
-## 🚀 The Problem
+##  The Problem
 
 The informal logistics market is crippled by a lack of trust:
 
@@ -14,7 +14,7 @@ The informal logistics market is crippled by a lack of trust:
 
 Current logistics applications require smartphones, active internet connections, and complex onboarding, alienating a massive portion of the market that relies on feature phones and USSD infrastructure.
 
-## 💡 The Solution & Core Features
+##  The Solution & Core Features
 
 MzigoSafe operates entirely over USSD (`*384*...#`) and SMS, making it accessible to 100% of mobile users with zero data requirements.
 
@@ -26,7 +26,7 @@ MzigoSafe operates entirely over USSD (`*384*...#`) and SMS, making it accessibl
 
 ---
 
-## 💸 Financial Architecture (Daraja API)
+##  Financial Architecture (Daraja API)
 
 MzigoSafe utilizes an asynchronous event-driven architecture to handle Safaricom's Daraja API, ensuring no funds are lost during network timeouts.
 
@@ -58,7 +58,7 @@ sequenceDiagram
 
 ---
 
-## 🛠️ Technical Architecture
+##  Technical Architecture
 
 ### Tech Stack
 
@@ -80,7 +80,7 @@ sequenceDiagram
 
 ---
 
-## ⚙️ Local Development Setup
+##  Local Development Setup
 
 ### Prerequisites
 
@@ -154,7 +154,7 @@ ngrok http 8000
 
 ---
 
-## 🔮 Future Roadmap
+##  Future Roadmap
 
 * **Data Warehousing & BI:** Implement an extended star schema to extract transactional data into a dedicated warehouse, enabling comprehensive sales, route, and volume analysis via Power BI.
 * **AI-Powered Predictive Logistics:** Utilize timestamp data from the stateful Dual-OTP system to train regression models (e.g., LightGBM) that forecast accurate delivery ETAs and optimize dynamic pricing based on historical route completion times.
@@ -166,5 +166,3 @@ ngrok http 8000
 ***
 
 <FollowUp label="What's the next mission?" query="With the code locked and documented, how do you want to proceed? Are you pushing this straight to your GitHub portfolio, or do you want to start architecting the predictive ETAs and data warehouse from the roadmap?"/>
-
-```
