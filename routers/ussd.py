@@ -2,7 +2,7 @@ from fastapi import APIRouter, Form, Response, Depends
 from sqlalchemy.orm import Session
 from database import get_db
 from routers.sms import dispatch_logistics_alerts
-from utils.mpesa import initiate_stk_push
+from utils.mpesa import initiate_stk_push, trigger_b2c_payout
 import models
 import random
 
@@ -134,12 +134,30 @@ async def ussd_callback(
                         active_delivery.status = models.DeliveryStatus.delivered
                         seller = db.query(models.User).filter(models.User.user_id == active_delivery.seller_id).first()
                         
+                        # --- LIVE B2C PAYOUTS ---
+                        # 1. Pay the Seller for the item
+                        trigger_b2c_payout(
+                            phone_number=seller.phone_number,
+                            amount=active_delivery.item_price,
+                            command_id="BusinessPayment",
+                            remarks=f"MzigoSafe Item Payout #{active_delivery.delivery_id}"
+                        )
+                        
+                        # 2. Pay the Rider for the delivery fee
+                        trigger_b2c_payout(
+                            phone_number=user.phone_number,
+                            amount=active_delivery.delivery_fee,
+                            command_id="SalaryPayment",
+                            remarks=f"MzigoSafe Transit Fee #{active_delivery.delivery_id}"
+                        )
+                        
+                        # Keep virtual wallet updated as a secondary ledger
                         seller.wallet_balance += active_delivery.item_price
                         user.wallet_balance += active_delivery.delivery_fee
                         
                         ussd_session.current_screen = "MAIN_MENU"
                         db.commit()
-                        return Response(f"END Delivery Complete! KES {active_delivery.delivery_fee} added to your wallet.", media_type="text/plain")
+                        return Response(f"END Delivery Complete! KES {active_delivery.delivery_fee} sent to your M-Pesa.", media_type="text/plain")
                     return Response("CON Invalid OTP. Try again\nEnter 4-digit Delivery OTP:", media_type="text/plain")
         
         # Idle Rider / Job Board
@@ -235,7 +253,7 @@ async def ussd_callback(
         return Response("END Invalid choice.", media_type="text/plain")
 
     # =========================================================================
-    # 5. STATEFUL SELLER FLOW (Default)
+    # 5. STATEFUL SELLER FLOW & UNIVERSAL TRACKING
     # =========================================================================
     if ussd_session.current_screen == "MAIN_MENU":
         if text == "":
@@ -245,10 +263,42 @@ async def ussd_callback(
             ussd_session.current_screen = "ASK_BUYER_PHONE"
             db.commit()
             return Response("CON Enter Buyer Phone Number (e.g., +2547XXXXXXXX):", media_type="text/plain")
+            
+        elif latest_input == "2":
+            # Auto-fetch the user's most recent order (whether they are the buyer or seller)
+            recent_delivery = db.query(models.Delivery).filter(
+                (models.Delivery.seller_id == user.user_id) | 
+                (models.Delivery.buyer_id == user.user_id)
+            ).order_by(models.Delivery.created_at.desc()).first()
+            
+            if not recent_delivery:
+                return Response("END You do not have any recent deliveries.", media_type="text/plain")
+            
+            # Translate database enums into human-readable text
+            status_map = {
+                models.DeliveryStatus.pending_buyer_payment: "Waiting for Buyer Payment",
+                models.DeliveryStatus.funds_secured: "Waiting for Rider Dispatch",
+                models.DeliveryStatus.rider_assigned: "Rider En Route to Pickup",
+                models.DeliveryStatus.in_transit: "Package IN TRANSIT to Buyer",
+                models.DeliveryStatus.delivered: "Delivery Complete",
+                models.DeliveryStatus.cancelled: "Order Cancelled / Refunded"
+            }
+            
+            readable_status = status_map.get(recent_delivery.status, "Unknown")
+            role_in_tx = "Seller" if recent_delivery.seller_id == user.user_id else "Buyer"
+            
+            return Response(
+                f"END Delivery #{recent_delivery.delivery_id}\n"
+                f"Role: {role_in_tx}\n"
+                f"Item: Ksh {recent_delivery.item_price}\n"
+                f"Status: {readable_status}", 
+                media_type="text/plain"
+            )
+            
         elif latest_input == "3":
             return Response(f"END Your virtual wallet balance is: KES {user.wallet_balance}", media_type="text/plain")
         else:
-            return Response("END Feature coming soon.", media_type="text/plain")
+            return Response("END Invalid choice.", media_type="text/plain")
 
     elif ussd_session.current_screen == "ASK_BUYER_PHONE":
         session_data["buyer_phone"] = latest_input

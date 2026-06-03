@@ -89,3 +89,21 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"🚨 Error in M-Pesa Webhook: {e}")
         return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+@router.post("/b2c-callback")
+async def b2c_callback(request: Request):
+    """Catches the asynchronous result of the B2C payouts."""
+    try:
+        payload = await request.json()
+        result = payload.get("Result", {})
+        result_code = result.get("ResultCode")
+        
+        if result_code == 0:
+            print("✅ B2C Payout Successfully hit user's M-Pesa account!")
+        else:
+            print(f"⚠️ B2C Payout Failed/Reverted: {result.get('ResultDesc')}")
+            
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}
+    except Exception as e:
+        print(f"🚨 Error parsing B2C Webhook: {e}")
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}

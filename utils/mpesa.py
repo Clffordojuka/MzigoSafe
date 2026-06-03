@@ -10,6 +10,7 @@ load_dotenv()
 # Daraja Sandbox Endpoints
 MPESA_AUTH_URL = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
 MPESA_STK_URL = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+MPESA_B2C_URL = "https://sandbox.safaricom.co.ke/mpesa/b2c/v3/paymentrequest"
 
 def get_access_token():
     """Fetches the OAuth token from Safaricom Daraja."""
@@ -77,6 +78,53 @@ def initiate_stk_push(phone_number: str, amount: int, reference: str, descriptio
         return result
     except requests.exceptions.RequestException as e:
         print(f"❌ STK Push Failed: {e}")
+        if response is not None:
+            print(response.text)
+        return {"error": str(e)}
+
+def trigger_b2c_payout(phone_number: str, amount: int, command_id: str, remarks: str, occassion: str = ""):
+    """
+    Sends money FROM your paybill TO a customer's M-Pesa account.
+    command_id can be: 'BusinessPayment', 'SalaryPayment', or 'PromotionPayment'
+    """
+    access_token = get_access_token()
+    if not access_token:
+        return {"error": "Authentication failed"}
+
+    # Fetch B2C configurations from .env
+    shortcode = os.getenv("MPESA_B2C_SHORTCODE", os.getenv("MPESA_SHORTCODE")) 
+    initiator_name = os.getenv("MPESA_B2C_INITIATOR_NAME", "testapi")
+    security_credential = os.getenv("MPESA_B2C_SECURITY_CREDENTIAL", "SANDBOX_CREDENTIAL_HERE")
+    callback_url = os.getenv("MPESA_CALLBACK_URL").replace("callback", "b2c-callback") # E.g., /api/mpesa/b2c-callback
+    
+    formatted_phone = format_phone_number(phone_number)
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "InitiatorName": initiator_name,
+        "SecurityCredential": security_credential,
+        "CommandID": command_id,
+        "Amount": int(amount),
+        "PartyA": shortcode,
+        "PartyB": formatted_phone,
+        "Remarks": remarks,
+        "QueueTimeOutURL": callback_url,
+        "ResultURL": callback_url,
+        "Occassion": occassion
+    }
+
+    try:
+        response = requests.post(MPESA_B2C_URL, json=payload, headers=headers)
+        response.raise_for_status()
+        result = response.json()
+        print(f"💸 B2C Payout Initiated for {formatted_phone}: {result.get('ConversationID')}")
+        return result
+    except requests.exceptions.RequestException as e:
+        print(f"❌ B2C Payout Failed for {formatted_phone}: {e}")
         if response is not None:
             print(response.text)
         return {"error": str(e)}
