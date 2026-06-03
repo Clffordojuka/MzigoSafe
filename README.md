@@ -1,4 +1,3 @@
-```markdown
 # MzigoSafe
 
 **MzigoSafe** is an offline-first, USSD-based logistics escrow platform designed to eliminate the trust deficit in the informal e-commerce sector. By leveraging a centralized ledger and a strict **Dual-OTP Chain of Custody**, MzigoSafe mathematically guarantees proof-of-delivery and instant M-Pesa payouts, protecting sellers, buyers, and delivery riders alike.
