@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from database import engine
 import models
+import analytics_models
 from routers import ussd, payments, sms, dashboard, mpesa
 
 # Create the database tables on startup
 models.Base.metadata.create_all(bind=engine)
+analytics_models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="MzigoSafe API")
 

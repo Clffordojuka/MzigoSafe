@@ -1,10 +1,10 @@
 # MzigoSafe
 
-**MzigoSafe** is an offline-first, USSD-based logistics escrow platform designed to eliminate the trust deficit in the informal e-commerce sector. By leveraging a centralized ledger and a strict **Dual-OTP Chain of Custody**, MzigoSafe mathematically guarantees proof-of-delivery and instant M-Pesa payouts, protecting sellers, buyers, and delivery riders alike.
+**MzigoSafe** is an offline-first, USSD-based logistics escrow platform designed to eliminate the trust deficit in the informal e-commerce sector. By leveraging a centralized ledger, a strict **Dual-OTP Chain of Custody**, and a dedicated data warehousing pipeline, MzigoSafe mathematically guarantees proof-of-delivery, instant M-Pesa payouts, and analytical insights for logistics optimization.
 
 ---
 
-##  The Problem
+## 🚀 The Problem
 
 The informal logistics market is crippled by a lack of trust:
 
@@ -14,7 +14,7 @@ The informal logistics market is crippled by a lack of trust:
 
 Current logistics applications require smartphones, active internet connections, and complex onboarding, alienating a massive portion of the market that relies on feature phones and USSD infrastructure.
 
-##  The Solution & Core Features
+## ✨ The Solution & Core Features
 
 MzigoSafe operates entirely over USSD (`*384*...#`) and SMS, making it accessible to 100% of mobile users with zero data requirements.
 
@@ -26,7 +26,7 @@ MzigoSafe operates entirely over USSD (`*384*...#`) and SMS, making it accessibl
 
 ---
 
-##  Financial Architecture (Daraja API)
+## 💸 Financial Architecture (Daraja API)
 
 MzigoSafe utilizes an asynchronous event-driven architecture to handle Safaricom's Daraja API, ensuring no funds are lost during network timeouts.
 
@@ -58,13 +58,58 @@ sequenceDiagram
 
 ---
 
-##  Technical Architecture
+## 📊 Analytics & Data Warehousing (OLAP Engine)
+
+To prevent analytical queries from slowing down live USSD operations, MzigoSafe decouples its transactional records from its business intelligence engine. An automated ETL pipeline extracts live data into a dedicated **Star Schema** optimized for column aggregation and Machine Learning training.
+
+```mermaid
+erDiagram
+    FACT_DELIVERIES {
+        int fact_id PK
+        int delivery_id
+        int date_id FK
+        int seller_id FK
+        int rider_id FK
+        float item_price
+        float delivery_fee
+        float time_to_pickup_minutes
+        float time_to_delivery_minutes
+        string status
+    }
+    DIM_USERS {
+        int user_id PK
+        string phone_number
+        string role
+        date date_joined
+    }
+    DIM_TIME {
+        int date_id PK
+        date full_date
+        int year
+        int month
+        int day
+        string day_of_week
+        boolean is_weekend
+    }
+    DIM_USERS ||--o{ FACT_DELIVERIES : "acts as seller/rider"
+    DIM_TIME ||--o{ FACT_DELIVERIES : "timestamps order"
+
+```
+
+### Analytical Capabilities
+
+* **Nightly ETL Processing:** Executing `python etl_pipeline.py` extracts new, closed transactions, computes operational delivery and pickup durations (ETAs), maps datetime dimensions, and loads them cleanly into the warehouse.
+* **Downstream Integration:** The OLAP engine exposes structured Pandas dataframes, ready to pipe directly into Power BI dashboards or train advanced tree-based regression models.
+
+---
+
+## 🛠️ Technical Architecture
 
 ### Tech Stack
 
 * **Backend API:** Python, FastAPI
-* **Database & ORM:** PostgreSQL, SQLAlchemy
-* **Frontend Dashboard:** Jinja2 Templates, Tailwind CSS
+* **Database & ORM:** PostgreSQL, SQLAlchemy (with manual schema migrations via SQL injections)
+* **Data Science & Analytics:** Pandas, LightGBM, Scikit-Learn
 * **Telecommunications:** Africa's Talking API (USSD & SMS)
 * **Payments:** Safaricom Daraja API (M-Pesa Express & B2C)
 
@@ -80,7 +125,7 @@ sequenceDiagram
 
 ---
 
-##  Local Development Setup
+## 💻 Local Development Setup
 
 ### Prerequisites
 
@@ -92,14 +137,15 @@ sequenceDiagram
 ### Installation
 
 1. **Clone the repository:**
+
 ```bash
-git clone [https://github.com/yourusername/mzigosafe.git](https://github.com/yourusername/mzigosafe.git)
+git clone https://github.com/yourusername/mzigosafe.git
 cd mzigosafe
 
 ```
 
-
 2. **Create a virtual environment and install dependencies:**
+
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -107,9 +153,9 @@ pip install -r requirements.txt
 
 ```
 
-
 3. **Environment Variables:**
 Create a `.env` file in the root directory and populate your API credentials:
+
 ```env
 DATABASE_URL=postgresql://username:password@localhost:5432/mzigosafe_db
 
@@ -125,44 +171,61 @@ MPESA_SHORTCODE=174379
 MPESA_B2C_SHORTCODE=600986
 MPESA_B2C_INITIATOR_NAME=testapi
 MPESA_B2C_SECURITY_CREDENTIAL=your_encrypted_credential
-MPESA_CALLBACK_URL=[https://your-ngrok-url.app/api/mpesa/callback](https://your-ngrok-url.app/api/mpesa/callback)
+MPESA_CALLBACK_URL=https://your-ngrok-url.app/api/mpesa/callback
 
 ```
 
+4. **Initialize tables & trigger your first ETL run:**
 
-4. **Initialize the Database:**
-Run the application once to allow SQLAlchemy to create the database schemas.
-5. **Run the Application:**
 ```bash
-uvicorn main:app --reload
+# Registers OLTP and OLAP models to create the core tables
+python main.py 
+
+# Populates the Star Schema tables from transactional history
+python etl_pipeline.py
+
+# Verifies your analytical layout via a Pandas aggregation matrix
+python query_warehouse.py
 
 ```
 
+5. **Expose Localhost for Webhooks:**
 
-6. **Expose Localhost:**
-Use Ngrok to tunnel your local server and configure your webhooks.
 ```bash
 ngrok http 8000
 
 ```
 
-
 * *USSD Callback:* `https://<ngrok-url>/api/ussd`
 * *M-Pesa Callback:* `https://<ngrok-url>/api/mpesa/callback`
 
+---
 
+## 🔮 Future Roadmap
+
+* **AI-Powered Predictive Logistics:** Feed the historical star schema variables directly into a LightGBM model to output dynamic ETAs back into the USSD interface before a rider accepts a route.
+* **Automated Agent Support:** Integrate a Retrieval-Augmented Generation (RAG) system utilizing advanced LLMs to handle tier-1 customer disputes and automated USSD/WhatsApp ticket generation.
+* **E-commerce API:** Provide an open REST API allowing external platforms, Shopify setups, and Instagram business accounts to generate MzigoSafe escrow parameters automatically.
 
 ---
 
-##  Future Roadmap
+## 🛠️ Remaining Builds & Next Milestones
 
-* **Data Warehousing & BI:** Implement an extended star schema to extract transactional data into a dedicated warehouse, enabling comprehensive sales, route, and volume analysis via Power BI.
-* **AI-Powered Predictive Logistics:** Utilize timestamp data from the stateful Dual-OTP system to train regression models (e.g., LightGBM) that forecast accurate delivery ETAs and optimize dynamic pricing based on historical route completion times.
-* **Automated Agent Support:** Integrate a Retrieval-Augmented Generation (RAG) system utilizing advanced LLMs to handle tier-1 customer disputes, query routing, and automated USSD/WhatsApp support.
-* **E-commerce API:** Provide an open REST API allowing external platforms, WhatsApp bots, and Instagram sellers to generate MzigoSafe escrow links automatically upon order confirmation.
+Now that the Data Warehouse is running smoothly, we have finished the foundational backend. Here is the list of builds left to take this system to a portfolio-ready or production status:
 
-```
+### 1. The Synthetic Data Injection Script (`generate_mock_data.py`)
 
-***
+* **Why it's left:** We currently only have 3 rows of data with actual timestamp numbers. We need a script that programmatically injects 500 to 1,000 highly realistic rows into our DB (matching weekend/weekday behaviors, higher delivery fees for longer pickup intervals, etc.).
+* **Outcome:** Gives us an immediate, robust dataset to showcase our analytical dashboards and properly train the Machine Learning engine.
 
-<FollowUp label="What's the next mission?" query="With the code locked and documented, how do you want to proceed? Are you pushing this straight to your GitHub portfolio, or do you want to start architecting the predictive ETAs and data warehouse from the roadmap?"/>
+### 2. The Predictive Machine Learning Loop (`train_eta_model.py`)
+
+* **Why it's left:** The LightGBM pipeline code is written but waiting for that data block to unlock. Once we have the data, we will run the script, tune the hyper-parameters, generate real Mean Absolute Error metrics, and save the binary model artifact (`.pkl`).
+
+### 3. Production Model Inference Integration (`main.py` / USSD)
+
+* **Why it's left:** Once the model is trained, we need to load it back into the FastAPI router. When a seller checks an active delivery via the USSD menu or a rider looks at a job, our LightGBM model will calculate a dynamic ETA on the fly and display: `"Est. Delivery Time: 24 Mins"`.
+
+### 4. Interactive Live Monitoring Tool / Dashboard
+
+* **Why it's left:** While the Pandas terminal aggregation is great, a visual dashboard (built either using lightweight Jinja2 templates or a dedicated Streamlit dashboard script) will allow an admin to visually track total escrow holdings, active disputes, and rider performance metrics.

@@ -60,7 +60,7 @@ def run_etl():
                             dim_user = analytics_models.DimUser(
                                 user_id=oltp_user.user_id,
                                 phone_number=oltp_user.phone_number,
-                                role=oltp_user.role,
+                                role=oltp_user.role.value,
                                 date_joined=datetime.now().date() # Simplified for ETL
                             )
                             db.add(dim_user)
@@ -91,7 +91,7 @@ def run_etl():
                 delivery_fee=float(delivery.delivery_fee),
                 time_to_pickup_minutes=pickup_mins,
                 time_to_delivery_minutes=delivery_mins,
-                status=delivery.status
+                status=delivery.status.value
             )
             db.add(fact)
 
