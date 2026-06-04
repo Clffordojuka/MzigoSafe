@@ -5,6 +5,7 @@ from routers.sms import dispatch_logistics_alerts
 from utils.mpesa import initiate_stk_push, trigger_b2c_payout
 import models
 import random
+from datetime import datetime
 
 def generate_otp():
     return str(random.randint(1000, 9999))
@@ -97,6 +98,7 @@ async def ussd_callback(
                 elif ussd_session.current_screen == "ENTERING_PICKUP_OTP":
                     if latest_input == active_delivery.pickup_otp:
                         active_delivery.status = models.DeliveryStatus.in_transit
+                        active_delivery.pickup_time = datetime.now() # Record precise pickup time
                         ussd_session.current_screen = "MAIN_MENU"
                         db.commit()
                         return Response("END OTP Verified! Package IN TRANSIT. Dial back when you reach the buyer.", media_type="text/plain")
@@ -132,6 +134,7 @@ async def ussd_callback(
                 elif ussd_session.current_screen == "ENTERING_DROPOFF_OTP":
                     if latest_input == active_delivery.dropoff_otp:
                         active_delivery.status = models.DeliveryStatus.delivered
+                        active_delivery.dropoff_time = datetime.now() # Record precise dropoff time
                         seller = db.query(models.User).filter(models.User.user_id == active_delivery.seller_id).first()
                         
                         # --- LIVE B2C PAYOUTS ---

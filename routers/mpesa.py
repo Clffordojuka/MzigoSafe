@@ -41,7 +41,7 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
         
         # 4. Handle the Payment Result
         if result_code == 0:
-            # ✅ PAYMENT SUCCESSFUL
+            # PAYMENT SUCCESSFUL
             
             # Extract the actual M-Pesa Receipt Number for accounting
             meta_items = callback_data.get("CallbackMetadata", {}).get("Item", [])
@@ -71,12 +71,12 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
                 pickup_otp=pickup_otp,
                 dropoff_otp=dropoff_otp
             )
-            print(f"💰 M-Pesa Success! Receipt {receipt_no} secured. SMS fired.")
+            print(f"M-Pesa Success! Receipt {receipt_no} secured. SMS fired.")
 
         else:
-            # ❌ PAYMENT FAILED / CANCELLED (e.g., Wrong PIN, Insufficient Funds)
+            # PAYMENT FAILED / CANCELLED (e.g., Wrong PIN, Insufficient Funds)
             result_desc = callback_data.get("ResultDesc", "Failed")
-            print(f"⚠️ M-Pesa Failed: {result_desc}")
+            print(f"M-Pesa Failed: {result_desc}")
             
             # Revert the ledger and cancel the delivery order
             ledger_entry.status = models.PaymentStatus.failed
@@ -87,7 +87,7 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
         return {"ResultCode": 0, "ResultDesc": "Accepted"}
         
     except Exception as e:
-        print(f"🚨 Error in M-Pesa Webhook: {e}")
+        print(f"Error in M-Pesa Webhook: {e}")
         return {"ResultCode": 0, "ResultDesc": "Accepted"}
 
 @router.post("/b2c-callback")
@@ -99,11 +99,11 @@ async def b2c_callback(request: Request):
         result_code = result.get("ResultCode")
         
         if result_code == 0:
-            print("✅ B2C Payout Successfully hit user's M-Pesa account!")
+            print("B2C Payout Successfully hit user's M-Pesa account!")
         else:
-            print(f"⚠️ B2C Payout Failed/Reverted: {result.get('ResultDesc')}")
+            print(f"B2C Payout Failed/Reverted: {result.get('ResultDesc')}")
             
         return {"ResultCode": 0, "ResultDesc": "Accepted"}
     except Exception as e:
-        print(f"🚨 Error parsing B2C Webhook: {e}")
+        print(f"Error parsing B2C Webhook: {e}")
         return {"ResultCode": 0, "ResultDesc": "Accepted"}

@@ -44,6 +44,12 @@ class Delivery(Base):
     
     status = Column(Enum(DeliveryStatus), default=DeliveryStatus.pending_buyer_payment)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # ==========================================
+    # NEW: Timestamp Tracking for Data Warehouse
+    # ==========================================
+    pickup_time = Column(DateTime(timezone=True), nullable=True)
+    dropoff_time = Column(DateTime(timezone=True), nullable=True)
 
 class EscrowLedger(Base):
     __tablename__ = "escrow_ledger"
@@ -55,7 +61,7 @@ class EscrowLedger(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 # ==========================================
-# NEW: The missing USSD Session Table!
+# The USSD Session Table
 # ==========================================
 class UssdSession(Base):
     __tablename__ = "ussd_sessions"

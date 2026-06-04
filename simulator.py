@@ -3,7 +3,7 @@ import random
 import string
 
 # 1. PASTE YOUR CHECKOUT ID HERE
-CHECKOUT_ID = "ws_CO_03062026230657776722222222" 
+CHECKOUT_ID = "ws_CO_04062026121550794722222222" 
 
 # Generate a random receipt number so the database doesn't block it!
 random_receipt = "SIM" + "".join(random.choices(string.ascii_uppercase + string.digits, k=7))
@@ -18,7 +18,7 @@ safaricom_mock_payload = {
             "ResultDesc": "The service request is processed successfully.",
             "CallbackMetadata": {
                 "Item": [
-                    {"Name": "Amount", "Value": 5000.00},
+                    {"Name": "Amount", "Value": 2900.00},
                     {"Name": "MpesaReceiptNumber", "Value": random_receipt},
                     {"Name": "PhoneNumber", "Value": 254722222222}
                 ]

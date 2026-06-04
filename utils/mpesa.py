@@ -22,7 +22,7 @@ def get_access_token():
         res.raise_for_status()
         return res.json()['access_token']
     except Exception as e:
-        print(f"❌ Failed to get M-Pesa token: {e}")
+        print(f"Failed to get M-Pesa token: {e}")
         return None
 
 def format_phone_number(phone: str):
@@ -74,10 +74,10 @@ def initiate_stk_push(phone_number: str, amount: int, reference: str, descriptio
         response = requests.post(MPESA_STK_URL, json=payload, headers=headers)
         response.raise_for_status()
         result = response.json()
-        print(f"✅ STK Push Initiated: {result.get('CheckoutRequestID')}")
+        print(f"STK Push Initiated: {result.get('CheckoutRequestID')}")
         return result
     except requests.exceptions.RequestException as e:
-        print(f"❌ STK Push Failed: {e}")
+        print(f"STK Push Failed: {e}")
         if response is not None:
             print(response.text)
         return {"error": str(e)}
@@ -121,10 +121,10 @@ def trigger_b2c_payout(phone_number: str, amount: int, command_id: str, remarks:
         response = requests.post(MPESA_B2C_URL, json=payload, headers=headers)
         response.raise_for_status()
         result = response.json()
-        print(f"💸 B2C Payout Initiated for {formatted_phone}: {result.get('ConversationID')}")
+        print(f"B2C Payout Initiated for {formatted_phone}: {result.get('ConversationID')}")
         return result
     except requests.exceptions.RequestException as e:
-        print(f"❌ B2C Payout Failed for {formatted_phone}: {e}")
+        print(f"B2C Payout Failed for {formatted_phone}: {e}")
         if response is not None:
             print(response.text)
         return {"error": str(e)}
